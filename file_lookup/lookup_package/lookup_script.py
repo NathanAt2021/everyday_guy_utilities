@@ -2,6 +2,13 @@ import argparse
 import os
 import re
 
+
+# Function to check match of pattern with string
+def match_exists(pattern, string) -> bool:
+    return len([m.start() for m in re.finditer(pattern=pattern, string=string)]) > 0
+
+
+# Building argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--tolerance",
@@ -45,37 +52,44 @@ parser.add_argument(
 args = parser.parse_args()
 
 pattern: str = args.pattern
-similar_size: str = args.similar_file_filter
+similar_file_filter: str = args.similar_file_filter
 tol: float = args.tolerance
 remove_dot_folders: bool = args.remove_dot_folders
 lookup_file: str = args.lookup_file_file_name
 
 
-def match_exists(pattern, string) -> bool:
-    return len([m.start() for m in re.finditer(pattern=pattern, string=string)]) > 0
+if __name__ == "__main__":
+    # Looking for files that match pattern and storing their paths
+    os.system(f"cd ~/ && find -iname '{pattern}' > {lookup_file}")
 
+    # Loading result file
+    with open(lookup_file, "r") as f:
+        files = f.readlines()
 
-os.system(f"cd ~/ && find -iname '{pattern}' > lookup_files.txt")
+    # Cleaning from line breaks
+    files = [file.replace("\n", "") for file in files]
 
-with open("lookup_files.txt", "r") as f:
-    files = f.readlines()
+    # Removing package and OS config files
+    if remove_dot_folders:
+        files = [file for file in files if not match_exists(r"[^a-zA-Z0-9]\.[a-zA-Z0-9]+", file)]
 
-files = [file.replace("\n", "") for file in files]
+    # Looking for files containing filter string for similarity
+    similar_size_files = [file for file in files if similar_file_filter in file]
 
-if remove_dot_folders:
-    files = [file for file in files if not match_exists(r"[^a-zA-Z0-9]\.[a-zA-Z0-9]+", file)]
+    # Getting file lists' sizes
+    sizes = [os.path.getsize(file) for file in files]
+    similar_size_files_sizes = [os.path.getsize(file) for file in similar_size_files]
 
-similar_size_files = [file for file in files if similar_size in file]
+    # Retaining files within given tolerance in terms of file size
+    size_filtered_files = [
+        file
+        for file, size in zip(files, sizes)
+        if any(abs(size / similar_size - 1) <= tol for similar_size in similar_size_files_sizes)
+    ]
 
-sizes = [os.path.getsize(file) for file in files]
+    # Removing lookup result file
+    os.remove(lookup_file)
 
-similar_size_files_sizes = [os.path.getsize(file) for file in similar_size_files]
-
-size_filtered_files = [
-    file
-    for file, size in zip(files, sizes)
-    if any(abs(size / similar_size - 1) <= tol for similar_size in similar_size_files_sizes)
-]
-
-for file in size_filtered_files:
-    print(file)
+    # Printing results
+    for file in size_filtered_files:
+        print(file)
